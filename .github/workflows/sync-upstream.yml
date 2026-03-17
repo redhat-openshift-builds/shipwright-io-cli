@@ -28,12 +28,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Set up deploy key
+        uses: webfactory/ssh-agent@dc588b651fe13675774614f8e6a936a468676387 # v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SYNC_DEPLOY_KEY }}
+
       - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/shipwright-io/cli.git
           git fetch upstream main
 
-      - name: Merge upstream changes
+      - name: Rebase onto upstream
         run: |
           UPSTREAM_SHA=$(git rev-parse upstream/main)
           LOCAL_SHA=$(git rev-parse HEAD)
@@ -45,13 +50,15 @@ jobs:
 
           echo "Syncing main: $LOCAL_SHA -> $UPSTREAM_SHA"
 
-          if ! git merge upstream/main --no-edit; then
-            echo "::error::Merge conflict syncing 'main' from upstream."
+          if ! git rebase upstream/main; then
+            echo "::error::Rebase conflict syncing 'main' from upstream."
             echo "::error::Upstream SHA: $UPSTREAM_SHA | Mirror SHA: $LOCAL_SHA"
             echo "::error::Manual resolution required."
-            git merge --abort
+            git rebase --abort
             exit 1
           fi
 
       - name: Push to mirror
-        run: git push origin main
+        run: |
+          git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:main --force-with-lease
